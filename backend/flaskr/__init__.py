@@ -10,6 +10,24 @@ from models import setup_db, Question, Category
 
 QUESTIONS_PER_PAGE = 10
 
+def paginate_selection(request, selection):
+  current = request.args.get('page', 1, type=int)
+  initial_index =  (current - 1) * QUESTIONS_PER_PAGE
+  final_index = initial_index + QUESTIONS_PER_PAGE
+
+  result = [item.format() for item in selection]
+  formatted_result = result[initial_index:final_index]
+
+  return formatted_result
+
+def format_categories(categories):
+  result = [item.format() for item in categories]
+  formatted_categories = {}
+  for single_category in result:
+    formatted_categories[single_category['id']] = single_category['type']
+
+  return formatted_categories
+
 def create_app(test_config=None):
   # create and configure the app
   app = Flask(__name__)
@@ -34,6 +52,15 @@ def create_app(test_config=None):
   for all available categories.
   '''
 
+  @app.route('/categories')
+  def get_all_categories():
+    all_categories = Category.query.all()
+    if len(all_categories) == 0:
+      abort(404)
+    formatted_categories = format_categories(all_categories)
+    return jsonify({
+      "categories": formatted_categories
+    })
 
   '''
   @TODO: 
@@ -51,15 +78,10 @@ def create_app(test_config=None):
   @app.route('/questions')
   def get_paginated_questions():
     try:
-      pagination_data = request.args.get('page', 1, type=int)
-
-      initial_index = (pagination_data - 1) * 10
-      final_index = initial_index + 10
-
-      all_questions = Question.query.group_by(Question.id).all()
+      all_questions = Question.query.order_by(Question.id).all()
       if len(all_questions) == 0:
         abort(404)
-      formatted_questions = [ques.format() for ques in all_questions]
+      formatted_questions = paginate_selection(request, all_questions)
 
       categories = [c.format() for c in Category.query.all()]
       formatted_categories = {}
@@ -68,7 +90,7 @@ def create_app(test_config=None):
 
       return jsonify({
         'success': True,
-        'questions': formatted_questions[initial_index:final_index],
+        'questions': formatted_questions,
         'total_questions': len(all_questions),
         'categories': formatted_categories,
         'current_category': {}
@@ -100,6 +122,24 @@ def create_app(test_config=None):
   of the questions list in the "List" tab.  
   '''
 
+  @app.route("/questions", methods=['POST'])
+  def post_question():
+    try:
+      jsonObj = request.get_json()
+      question = jsonObj["question"]
+      answer = jsonObj["answer"]
+      difficulty = jsonObj["difficulty"]
+      category = jsonObj["category"]
+
+      new_ques = Question(question=question, answer=answer, difficulty=difficulty, category=category)
+      new_ques.insert()
+      return jsonify({
+        "success": True
+      })
+
+    except:
+      abort(422)
+
   '''
   @TODO: 
   Create a POST endpoint to get questions based on a search term. 
@@ -111,6 +151,27 @@ def create_app(test_config=None):
   Try using the word "title" to start. 
   '''
 
+  @app.route("/questions", methods=['POST'])
+  def search_questions():
+    try:
+      search_query = request.get_json()['searchTerm']
+      questions_by_search = Question.query.filter(Question.question.ilike(f'%{search_query}%')).all()
+      if len(questions_by_search) == 0:
+        abort(404)
+      formatted_result = paginate_selection(request, questions_by_search)
+      return jsonify({
+        "questions": formatted_result,
+        "total_questions": len(questions_by_search),
+        "current_category": ""
+      })
+
+    # handles 404 and 422 separately
+    except Exception as e:
+      if isinstance(e, HTTPException):
+        abort(e.code)
+      else:
+        abort(422)
+
   '''
   @TODO: 
   Create a GET endpoint to get questions based on category. 
@@ -119,6 +180,27 @@ def create_app(test_config=None):
   categories in the left column will cause only questions of that 
   category to be shown. 
   '''
+
+  @app.route('/categories/<int:id>/questions')
+  def get_questions_by_category_id(id):
+    try:
+      ques = Question.query.filter(Question.category==id).order_by(Question.id).all()
+      if len(ques) == 0:
+        abort(404)
+      
+      formatted_ques = paginate_selection(request, ques)
+
+      return jsonify({
+        "questions": formatted_ques,
+        "total_questions": len(ques),
+        "current_category": Category.query.get(id).format()["type"]
+      })
+
+    except Exception as e:
+      if isinstance(e, HTTPException):
+        abort(e.code)
+      else:
+        abort(422)
 
 
   '''
