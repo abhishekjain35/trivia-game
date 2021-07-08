@@ -111,6 +111,16 @@ def create_app(test_config=None):
   This removal will persist in the database and when you refresh the page. 
   '''
 
+  @app.route('/questions/<int:id>', methods=['DELETE'])
+  def delete_ques_by_id(id):
+    ques = Question.query.filter(Question.id==id).one_or_none()
+    if ques is None:
+      abort(404)
+    ques.delete()
+    return jsonify({
+      "success": True
+    })
+
   '''
   @TODO: 
   Create an endpoint to POST a new question, 
@@ -214,6 +224,35 @@ def create_app(test_config=None):
   one question at a time is displayed, the user is allowed to answer
   and shown whether they were correct or not. 
   '''
+
+  @app.route('/quizzes', methods=['POST'])
+  def get_quiz_question():
+    try:
+      body = request.get_json()
+      previous_questions_id_list = body["previous_questions"]
+      quiz_category = body["quiz_category"]
+
+      category_id = quiz_category["id"]
+      questions_by_cid = Question.query.filter(Question.category==category_id).all()
+      if len(questions_by_cid) == 0:
+        abort(404)
+      formatted_ques = [q.format() for q in questions_by_cid]
+      random.shuffle(formatted_ques)
+
+      unique_question = False
+      for q in formatted_ques:
+        if q['id'] not in previous_questions_id_list:
+          unique_question = q
+      
+      return jsonify({
+        "question": unique_question
+      })
+
+    except Exception as e:
+      if isinstance(e, HTTPException):
+        abort(e.code)
+      else:
+        abort(422)
 
   '''
   @TODO: 
